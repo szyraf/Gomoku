@@ -1,0 +1,13 @@
+.center {
+  text-align: center;
+}
+
+.options {
+  display: flex;
+  justify-content: center;
+}
+
+.player,
+.bordSize {
+  margin: 0 30px;
+}
