@@ -217,7 +217,7 @@ export class BoardComponent {
         } else if (player === 'aiMedium') {
           this.ai(2, 2)
         } else if (player === 'aiHard') {
-          this.ai(3, 2)
+          this.ai(3, 1)
         } else if (player === 'aiImpossible') {
           this.ai(4, 1)
         }
@@ -306,6 +306,11 @@ class AI {
   private firstMove: boolean
   private indexDepth = 0
   private MAX_DISTANCE = 2
+  private newBoard: number[][] = []
+  private emptyCells: number[][] = []
+  private emptyCellsIndex: number = 0
+  private bestScore: number = -Infinity
+  private move: number[] = []
 
   constructor(difficulty: string, board: number[][], boardSize: number, turn: number, maxDepth: number, isFirstMove: boolean, maxDistance: number) {
     this.difficulty = difficulty
@@ -404,7 +409,6 @@ class AI {
           } else {
             score = points[0] - points[1]
           }
-          //niceEmptyCells.push(cell)
           remainingEmptyCells.push([...cell, score])
         }
       }
@@ -727,13 +731,7 @@ class AI {
     }
   }
 
-  private newBoard: number[][] = []
-  private emptyCells: number[][] = []
-  private emptyCellsIndex: number = 0
-  private bestScore: number = -Infinity
-  private move: number[] = []
-
-  nextMove(): string {
+  public nextMove(): string {
     let board = JSON.parse(JSON.stringify(this.board))
     let [i, j] = this.emptyCells[this.emptyCellsIndex]
 
@@ -747,8 +745,6 @@ class AI {
     }
     this.emptyCellsIndex++
 
-    // round to 0 decimal places
-    //return `${(this.emptyCellsIndex / this.emptyCells.length) * 100}%`
     return `${Math.round((this.emptyCellsIndex / this.emptyCells.length) * 100)}%`
   }
 
