@@ -284,6 +284,7 @@ class AI {
   private turn: number
   private maxDepth: number
   private indexDepth = 0
+  private MAX_DISTANCE = 1
 
   constructor(difficulty: string, board: number[][], boardSize: number, turn: number, maxDepth: number) {
     this.difficulty = difficulty
@@ -363,19 +364,50 @@ class AI {
   private getNiceEmptyCells(board: number[][], color: number): number[][] {
     let emptyCells = this.getEmptyCells(board)
     let niceEmptyCells: number[][] = []
+    let remainingEmptyCells: any = []
     emptyCells.forEach((cell) => {
       board[cell[0]][cell[1]] = color
-      if (this.checkWin(board) === color) {
-        console.log('nice')
-
-        niceEmptyCells.unshift(cell)
-      } else {
-        niceEmptyCells.push(cell)
+      if (!this.tooFarAway(JSON.parse(JSON.stringify(board)), cell, this.MAX_DISTANCE)) {
+        if (this.checkWin(board) === color) {
+          niceEmptyCells.unshift(cell)
+        } else {
+          let score = 0
+          let points = this.calculatePoints(board)
+          if (points[0] > 90 && color === 1) {
+            score = points[0]
+          } else if (points[1] > 90 && color === 2) {
+            score = -points[1]
+          } else {
+            score = points[0] - points[1]
+          }
+          //niceEmptyCells.push(cell)
+          remainingEmptyCells.push([...cell, score])
+        }
       }
       board[cell[0]][cell[1]] = 0
     })
 
+    remainingEmptyCells.sort((a: any, b: any) => b[2] - a[2])
+    remainingEmptyCells.forEach((cell: any) => {
+      niceEmptyCells.push([cell[0], cell[1]])
+    })
+
     return niceEmptyCells
+  }
+
+  private tooFarAway(board: number[][], cell: number[], maxDistance: number): boolean {
+    for (let i = -maxDistance; i <= maxDistance; i++) {
+      for (let j = -maxDistance; j <= maxDistance; j++) {
+        if (i === 0 && j === 0) continue
+        if (cell[0] + i >= 0 && cell[0] + i < this.boardSize && cell[1] + j >= 0 && cell[1] + j < this.boardSize) {
+          if (board[cell[0] + i][cell[1] + j] !== 0) {
+            return false
+          }
+        }
+      }
+    }
+    //console.log('too far away')
+    return true
   }
 
   private calculatePoints(board: number[][]): [number, number] {
@@ -641,10 +673,10 @@ class AI {
       //console.log('aaaaa')
 
       return points[0]
-    } else if (points[1] < -9 && isMaximizing) {
+    } else if (points[1] > 90 && isMaximizing) {
       console.log('bbbbb')
 
-      //return points[1]
+      return -points[1]
     }
 
     if (depth === this.maxDepth) {
@@ -725,10 +757,14 @@ class AI {
     let move: number[] = []
     //const emptyCells = this.getEmptyCells(board)
     const emptyCells = this.getNiceEmptyCells(board, 2)
+    let index = 0
     for (const [i, j] of emptyCells) {
+      index++
       board[i][j] = 2
       let score = this.minimax(JSON.parse(JSON.stringify(board)), depth, -Infinity, Infinity, false)
       board[i][j] = 0
+      console.log(`${index} / ${emptyCells.length}`)
+
       if (score > bestScore) {
         bestScore = score
         move = [i, j]
