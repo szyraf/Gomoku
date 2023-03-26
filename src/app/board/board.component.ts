@@ -17,16 +17,8 @@ export class BoardComponent {
   public gameOver: boolean = false
   public canvas = document.getElementById('boardCanvas') as HTMLCanvasElement
   public textInfo = 'Player 1 turn'
-  public static percent = '.'
   public lastMove: number[] = []
-
-  get getPercent(): string {
-    return BoardComponent.percent
-  }
-
-  public static setPercent(percent: string): void {
-    BoardComponent.percent = percent
-  }
+  public winCoords: number[][] = []
 
   ngOnInit() {
     this.createBoard()
@@ -67,12 +59,23 @@ export class BoardComponent {
 
     for (let i = 0; i < this.boardSize; i++) {
       for (let j = 0; j < this.boardSize; j++) {
+        let highlight = false
+        for (let k = 0; k < this.winCoords.length; k++) {
+          if (i === this.winCoords[k][0] && j === this.winCoords[k][1]) {
+            highlight = true
+          }
+        }
         if (i === this.lastMove[0] && j === this.lastMove[1]) {
+          highlight = true
+        }
+
+        if (highlight) {
           ctx.beginPath()
           ctx.fillStyle = 'rgba(255, 0, 0, 0.5)'
           ctx.rect(this.FIELD_SIZE * i, this.FIELD_SIZE * j, this.FIELD_SIZE, this.FIELD_SIZE)
           ctx.fill()
         }
+
         ctx.beginPath()
         ctx.moveTo(this.FIELD_SIZE * (i + 0.5), this.FIELD_SIZE * 0.5)
         ctx.lineTo(this.FIELD_SIZE * (i + 0.5), this.canvas.height - this.FIELD_SIZE * 0.5)
@@ -150,11 +153,14 @@ export class BoardComponent {
         ]
 
         for (const [dx, dy] of directions) {
+          let coords = [[i, j]]
+
           let count = 1 // count of consecutive cells with the same color
           let x = i + dx
           let y = j + dy
 
           while (x >= 0 && x < this.boardSize && y >= 0 && y < this.boardSize && this.board[x][y] === color) {
+            coords.push([x, y])
             count++
             x += dx
             y += dy
@@ -164,6 +170,7 @@ export class BoardComponent {
           y = j - dy
 
           while (x >= 0 && x < this.boardSize && y >= 0 && y < this.boardSize && this.board[x][y] === color) {
+            coords.push([x, y])
             count++
             x -= dx
             y -= dy
@@ -172,6 +179,7 @@ export class BoardComponent {
           if (count === 5) {
             this.gameOver = true
             this.textInfo = `Player ${color} wins!`
+            this.winCoords = coords
             setTimeout(() => {
               alert(`Player ${color} wins!`)
             }, this.DELAY_MS)
@@ -203,47 +211,34 @@ export class BoardComponent {
   public nextTurn(): void {
     if (!this.gameOver) {
       const player = this.turn === 1 ? this.player1 : this.player2
-      console.log(this.turn)
-
       if (player !== 'Human') {
         if (player === 'aiEasy') {
-          this.ai(2)
+          this.ai(2, 1)
         } else if (player === 'aiMedium') {
-          this.ai(3)
+          this.ai(2, 2)
         } else if (player === 'aiHard') {
-          this.ai(4)
+          this.ai(3, 2)
         } else if (player === 'aiImpossible') {
-          this.ai(5)
+          this.ai(4, 1)
         }
       }
     }
   }
 
-  // use AI class to get the move
-  public ai(depth: number): void {
-    const ai = new AI('easy', this.board, this.boardSize, this.turn, depth, this.firstMove)
+  public ai(depth: number, maxDistance: number): void {
+    const ai = new AI('easy', this.board, this.boardSize, this.turn, depth, this.firstMove, maxDistance)
 
-    /*
-    let interval = setInterval(() => {
-      let percent = ai.getPercent()
+    let length = ai.setup()
+    for (let i = 0; i < length; i++) {
+      let percent = ai.nextMove()
       console.log(percent)
+    }
+    const newBoard = ai.finish()
 
-      if (percent === 'stop') {
-        clearInterval(interval)
-        BoardComponent.percent = 'stop'
-        console.log('bbbbb')
-      } else {
-        BoardComponent.percent = percent
-        console.log('aaaaa')
-      }
-    }, 10)*/
-
-    const newBoard = ai.makeAIMove()
     const oldBoard = this.board
     this.board = newBoard
     this.firstMove = false
 
-    // compare the new board with the old one to find the move
     for (let i = 0; i < this.boardSize; i++) {
       for (let j = 0; j < this.boardSize; j++) {
         if (this.board[i][j] !== oldBoard[i][j]) {
@@ -310,18 +305,17 @@ class AI {
   private maxDepth: number
   private firstMove: boolean
   private indexDepth = 0
-  private MAX_DISTANCE = 1
+  private MAX_DISTANCE = 2
 
-  constructor(difficulty: string, board: number[][], boardSize: number, turn: number, maxDepth: number, isFirstMove: boolean) {
+  constructor(difficulty: string, board: number[][], boardSize: number, turn: number, maxDepth: number, isFirstMove: boolean, maxDistance: number) {
     this.difficulty = difficulty
     this.board = board
     this.boardSize = boardSize
     this.turn = turn
-    console.log('turn', turn)
-
     this.opponentTurn = turn === 1 ? 2 : 1
     this.maxDepth = maxDepth
     this.firstMove = isFirstMove
+    this.MAX_DISTANCE = maxDistance
   }
 
   private checkWin(board: number[][]): number {
@@ -433,18 +427,6 @@ class AI {
           if (board[cell[0] + i][cell[1] + j] !== 0) {
             return false
           }
-        }
-      }
-    }
-    //console.log('too far away')
-    return true
-  }
-
-  private isEmptyBoard(): boolean {
-    for (let i = 0; i < this.boardSize; i++) {
-      for (let j = 0; j < this.boardSize; j++) {
-        if (this.board[i][j] !== 0) {
-          return false
         }
       }
     }
@@ -640,8 +622,6 @@ class AI {
   private getPointsFromBlocks(blocks: any): number {
     let points = 0
     if (blocks.b5 > 0) {
-      console.log('ccccccccccccc')
-
       points = 100
     } else if (blocks.b4_0w > 0) {
       points = 90
@@ -695,14 +675,9 @@ class AI {
     if (this.indexDepth % 1000000 === 0) {
       console.log(this.indexDepth)
     }
-    //console.log('aaaa')
 
     let result = this.checkWin(board)
     if (result !== 0) {
-      //console.log('win')
-      //console.log(JSON.parse(JSON.stringify(board)))
-      //console.log(result)
-
       return result === this.turn ? 1000 : -1000
     }
 
@@ -730,7 +705,7 @@ class AI {
         board[i][j] = 0
         bestScore = Math.max(score, bestScore)
         alpha = Math.max(alpha, score)
-        if (beta <= alpha) {
+        if (beta <= alpha || bestScore === 1000) {
           break
         }
       }
@@ -744,7 +719,7 @@ class AI {
         board[i][j] = 0
         bestScore = Math.min(score, bestScore)
         beta = Math.min(beta, score)
-        if (beta <= alpha) {
+        if (beta <= alpha || bestScore === -1000) {
           break
         }
       }
@@ -752,45 +727,29 @@ class AI {
     }
   }
 
-  private percent: string = '0%'
+  private newBoard: number[][] = []
   private emptyCells: number[][] = []
-  private emptyCellsIndex = 0
-  private bestScore = '0%'
-  private score = 0
+  private emptyCellsIndex: number = 0
+  private bestScore: number = -Infinity
+  private move: number[] = []
 
-  private findBestMove(board: number[][]): number[] {
-    let bestScore = -Infinity
-    let move: number[] = []
-    const emptyCells = this.getNiceEmptyCells(board, this.turn)
-    this.emptyCells = emptyCells
-    let index = 0
+  nextMove(): string {
+    let board = JSON.parse(JSON.stringify(this.board))
+    let [i, j] = this.emptyCells[this.emptyCellsIndex]
 
-    for (const [i, j] of emptyCells) {
-      index++
-      board[i][j] = this.turn
-      let score = this.minimax(JSON.parse(JSON.stringify(board)), 0, -Infinity, Infinity, false)
-      board[i][j] = 0
-      //console.log(`${index} / ${emptyCells.length}`)
-      console.log(`${(index / emptyCells.length) * 100}%`)
-      this.percent = `${(index / emptyCells.length) * 100}%`
+    board[i][j] = this.turn
+    let score = this.minimax(JSON.parse(JSON.stringify(board)), 0, -Infinity, Infinity, false)
+    board[i][j] = 0
 
-      if (score > bestScore) {
-        bestScore = score
-        move = [i, j]
-      }
+    if (score > this.bestScore) {
+      this.bestScore = score
+      this.move = [i, j]
     }
+    this.emptyCellsIndex++
 
-    console.log('bestScore', bestScore)
-
-    return move
-  }
-
-  // nextMove(board: number[][]): number[][] {
-
-  // }
-
-  getPercent(): string {
-    return this.percent
+    // round to 0 decimal places
+    //return `${(this.emptyCellsIndex / this.emptyCells.length) * 100}%`
+    return `${Math.round((this.emptyCellsIndex / this.emptyCells.length) * 100)}%`
   }
 
   private copyBoard(board: number[][]): number[][] {
@@ -804,15 +763,31 @@ class AI {
     return newBoard
   }
 
-  public makeAIMove(): number[][] {
+  public setup(): number {
     this.indexDepth = 0
-    let newBoard = this.copyBoard(this.board)
-    let move = this.findBestMove(this.board)
-    console.log('move', move)
+    this.newBoard = this.copyBoard(this.board)
 
-    newBoard[move[0]][move[1]] = this.turn
-    this.percent = 'stop'
+    if (this.firstMove) {
+      this.firstMove = false
+      this.emptyCells = [[(this.boardSize - 1) / 2, (this.boardSize - 1) / 2]]
+    } else {
+      this.emptyCells = this.getNiceEmptyCells(this.board, this.turn)
+    }
 
-    return newBoard
+    return this.emptyCells.length
+  }
+
+  public getRandomEmptyCell(board: number[][], turn: number): void {
+    this.move = [this.getRandomInt(this.boardSize), this.getRandomInt(this.boardSize)]
+  }
+
+  public getRandomInt(max: number): number {
+    return Math.floor(Math.random() * max)
+  }
+
+  public finish(): number[][] {
+    this.newBoard[this.move[0]][this.move[1]] = this.turn
+    console.log('move', this.move)
+    return this.newBoard
   }
 }
