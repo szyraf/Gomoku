@@ -1,8 +1,4 @@
-import { getLocaleFirstDayOfWeek } from '@angular/common'
 import { Component, OnInit, Input } from '@angular/core'
-
-// TODO: 3x3 rule in AI to improve performance
-// TODO: First AI also should move
 
 @Component({
   selector: 'app-board',
@@ -15,12 +11,22 @@ export class BoardComponent {
   @Input() public player2: string = ''
   private FIELD_SIZE: number = 50
   private DELAY_MS: number = 100
+  private firstMove: boolean = true
   public board: number[][] = []
   public turn: number = 1
   public gameOver: boolean = false
   public canvas = document.getElementById('boardCanvas') as HTMLCanvasElement
   public textInfo = 'Player 1 turn'
+  public static percent = '.'
   public lastMove: number[] = []
+
+  get getPercent(): string {
+    return BoardComponent.percent
+  }
+
+  public static setPercent(percent: string): void {
+    BoardComponent.percent = percent
+  }
 
   ngOnInit() {
     this.createBoard()
@@ -111,6 +117,7 @@ export class BoardComponent {
       if (this.board[xGrid][yGrid] !== 1 && this.board[xGrid][yGrid] !== 2) {
         this.board[xGrid][yGrid] = this.turn
         this.lastMove = [xGrid, yGrid]
+        this.firstMove = false
         this.turn = this.turn === 1 ? 2 : 1
         this.updateCanvas()
         this.textInfo = this.turn === 1 ? 'Player 1 turn' : 'Player 2 turn'
@@ -214,10 +221,27 @@ export class BoardComponent {
 
   // use AI class to get the move
   public ai(depth: number): void {
-    const ai = new AI('easy', this.board, this.boardSize, this.turn, depth)
+    const ai = new AI('easy', this.board, this.boardSize, this.turn, depth, this.firstMove)
+
+    /*
+    let interval = setInterval(() => {
+      let percent = ai.getPercent()
+      console.log(percent)
+
+      if (percent === 'stop') {
+        clearInterval(interval)
+        BoardComponent.percent = 'stop'
+        console.log('bbbbb')
+      } else {
+        BoardComponent.percent = percent
+        console.log('aaaaa')
+      }
+    }, 10)*/
+
     const newBoard = ai.makeAIMove()
     const oldBoard = this.board
     this.board = newBoard
+    this.firstMove = false
 
     // compare the new board with the old one to find the move
     for (let i = 0; i < this.boardSize; i++) {
@@ -282,16 +306,22 @@ class AI {
   private board: number[][]
   private boardSize: number
   private turn: number
+  private opponentTurn: number
   private maxDepth: number
+  private firstMove: boolean
   private indexDepth = 0
   private MAX_DISTANCE = 1
 
-  constructor(difficulty: string, board: number[][], boardSize: number, turn: number, maxDepth: number) {
+  constructor(difficulty: string, board: number[][], boardSize: number, turn: number, maxDepth: number, isFirstMove: boolean) {
     this.difficulty = difficulty
     this.board = board
     this.boardSize = boardSize
     this.turn = turn
+    console.log('turn', turn)
+
+    this.opponentTurn = turn === 1 ? 2 : 1
     this.maxDepth = maxDepth
+    this.firstMove = isFirstMove
   }
 
   private checkWin(board: number[][]): number {
@@ -367,15 +397,15 @@ class AI {
     let remainingEmptyCells: any = []
     emptyCells.forEach((cell) => {
       board[cell[0]][cell[1]] = color
-      if (!this.tooFarAway(JSON.parse(JSON.stringify(board)), cell, this.MAX_DISTANCE)) {
+      if (!this.tooFarAway(JSON.parse(JSON.stringify(board)), cell, this.MAX_DISTANCE) || this.firstMove) {
         if (this.checkWin(board) === color) {
           niceEmptyCells.unshift(cell)
         } else {
           let score = 0
           let points = this.calculatePoints(board)
-          if (points[0] > 90 && color === 1) {
+          if (points[0] > 90 && color === this.opponentTurn) {
             score = points[0]
-          } else if (points[1] > 90 && color === 2) {
+          } else if (points[1] > 90 && color === this.turn) {
             score = -points[1]
           } else {
             score = points[0] - points[1]
@@ -407,6 +437,17 @@ class AI {
       }
     }
     //console.log('too far away')
+    return true
+  }
+
+  private isEmptyBoard(): boolean {
+    for (let i = 0; i < this.boardSize; i++) {
+      for (let j = 0; j < this.boardSize; j++) {
+        if (this.board[i][j] !== 0) {
+          return false
+        }
+      }
+    }
     return true
   }
 
@@ -498,7 +539,7 @@ class AI {
             potentiallyGoodMoves.push([x, y])
           }
 
-          if (color === 2) {
+          if (color === this.turn) {
             if (count >= 5) {
               yourBlocks.b6plus++
             } else if (count === 5) {
@@ -654,6 +695,7 @@ class AI {
     if (this.indexDepth % 1000000 === 0) {
       console.log(this.indexDepth)
     }
+    //console.log('aaaa')
 
     let result = this.checkWin(board)
     if (result !== 0) {
@@ -661,7 +703,7 @@ class AI {
       //console.log(JSON.parse(JSON.stringify(board)))
       //console.log(result)
 
-      return result === 2 ? 1000 : -1000
+      return result === this.turn ? 1000 : -1000
     }
 
     if (this.checkDraw(board)) {
@@ -670,12 +712,8 @@ class AI {
 
     let points = this.calculatePoints(board)
     if (points[0] > 90 && !isMaximizing) {
-      //console.log('aaaaa')
-
       return points[0]
     } else if (points[1] > 90 && isMaximizing) {
-      console.log('bbbbb')
-
       return -points[1]
     }
 
@@ -685,10 +723,9 @@ class AI {
 
     if (isMaximizing) {
       let bestScore = -Infinity
-      //const emptyCells = this.getEmptyCells(board)
-      const emptyCells = this.getNiceEmptyCells(board, 2)
+      const emptyCells = this.getNiceEmptyCells(board, this.turn)
       for (const [i, j] of emptyCells) {
-        board[i][j] = 2
+        board[i][j] = this.turn
         let score = this.minimax(JSON.parse(JSON.stringify(board)), depth + 1, alpha, beta, false)
         board[i][j] = 0
         bestScore = Math.max(score, bestScore)
@@ -696,32 +733,13 @@ class AI {
         if (beta <= alpha) {
           break
         }
-
-        /*
-        let isEmpty7x7 = true
-        for (let y2 = -3; y2 < 4; y2++) {
-          for (let x2 = -3; x2 < 4; x2++) {
-            if (!(x2 === 0 && y2 === 0)) {
-              if (i + y2 >= 0 && i + y2 < 7 && j + x2 >= 0 && j + x2 < 7) {
-                if (board[i + y2][j + x2] !== 0) {
-                  isEmpty7x7 = false
-                  break
-                }
-              }
-            }
-          }
-        }
-        if (isEmpty7x7) {
-          break
-        }*/
       }
       return bestScore
     } else {
       let bestScore = Infinity
-      //const emptyCells = this.getEmptyCells(board)
-      const emptyCells = this.getNiceEmptyCells(board, 1)
+      const emptyCells = this.getNiceEmptyCells(board, this.opponentTurn)
       for (const [i, j] of emptyCells) {
-        board[i][j] = 1
+        board[i][j] = this.opponentTurn
         let score = this.minimax(JSON.parse(JSON.stringify(board)), depth + 1, alpha, beta, true)
         board[i][j] = 0
         bestScore = Math.min(score, bestScore)
@@ -729,41 +747,32 @@ class AI {
         if (beta <= alpha) {
           break
         }
-
-        /*
-        let isEmpty7x7 = true
-        for (let y2 = -13; y2 < 14; y2++) {
-          for (let x2 = -13; x2 < 14; x2++) {
-            if (!(x2 === 0 && y2 === 0)) {
-              if (i + y2 >= 0 && i + y2 < 7 && j + x2 >= 0 && j + x2 < 7) {
-                if (board[i + y2][j + x2] === 1 || board[i + y2][j + x2] === 2) {
-                  isEmpty7x7 = false
-                  break
-                }
-              }
-            }
-          }
-        }
-        if (isEmpty7x7) {
-          break
-        }*/
       }
       return bestScore
     }
   }
 
-  private findBestMove(board: number[][], depth: number): number[] {
+  private percent: string = '0%'
+  private emptyCells: number[][] = []
+  private emptyCellsIndex = 0
+  private bestScore = '0%'
+  private score = 0
+
+  private findBestMove(board: number[][]): number[] {
     let bestScore = -Infinity
     let move: number[] = []
-    //const emptyCells = this.getEmptyCells(board)
-    const emptyCells = this.getNiceEmptyCells(board, 2)
+    const emptyCells = this.getNiceEmptyCells(board, this.turn)
+    this.emptyCells = emptyCells
     let index = 0
+
     for (const [i, j] of emptyCells) {
       index++
-      board[i][j] = 2
-      let score = this.minimax(JSON.parse(JSON.stringify(board)), depth, -Infinity, Infinity, false)
+      board[i][j] = this.turn
+      let score = this.minimax(JSON.parse(JSON.stringify(board)), 0, -Infinity, Infinity, false)
       board[i][j] = 0
-      console.log(`${index} / ${emptyCells.length}`)
+      //console.log(`${index} / ${emptyCells.length}`)
+      console.log(`${(index / emptyCells.length) * 100}%`)
+      this.percent = `${(index / emptyCells.length) * 100}%`
 
       if (score > bestScore) {
         bestScore = score
@@ -774,6 +783,14 @@ class AI {
     console.log('bestScore', bestScore)
 
     return move
+  }
+
+  // nextMove(board: number[][]): number[][] {
+
+  // }
+
+  getPercent(): string {
+    return this.percent
   }
 
   private copyBoard(board: number[][]): number[][] {
@@ -790,8 +807,11 @@ class AI {
   public makeAIMove(): number[][] {
     this.indexDepth = 0
     let newBoard = this.copyBoard(this.board)
-    let move = this.findBestMove(this.board, 0)
-    newBoard[move[0]][move[1]] = 2
+    let move = this.findBestMove(this.board)
+    console.log('move', move)
+
+    newBoard[move[0]][move[1]] = this.turn
+    this.percent = 'stop'
 
     return newBoard
   }
